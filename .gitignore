@@ -1,24 +1,18 @@
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.pyc
 *.pyo
-*.log
 *.tmp
-
-# Build
 dist/
 build/
-*.exe
 *.spec
-
-# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS
 .DS_Store
 Thumbs.db
+*.log
+*.zip
+backup_history.json
