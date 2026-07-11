@@ -7,7 +7,7 @@ import os, json, threading, webbrowser, sys
 from tkinter import ttk, messagebox, filedialog, scrolledtext
 import tkinter as tk
 
-VERSION = "v1.0"
+VERSION = "v1.1"
 from sql_backup_tool_core import SQLAgentManager, BackupHistory, BackupCleaner, SoftwareScheduler, log
 from sql_backup_core import do_backup, load_config, send_email_notification
 
@@ -104,7 +104,14 @@ class App:
         sc = s.get("schedule",{})
         if sc.get("enabled"):
             d += f"定时: {'每天' if sc.get('type')=='daily' else '每周'}"
-            if sc.get("type")=="weekly": d += f" {sc.get('day','MON')}"
+            if sc.get("type")=="weekly":
+                # 解析多选星期
+                days = sc.get('day', sc.get('days', 'MON'))
+                # 支持 + 连接的多选格式
+                parts = days.replace(":", "+").split("+") if ":" not in days or days.count(":") == 1 else [days.split(":")[0]]
+                cn_map = {"MON":"一","TUE":"二","WED":"三","THU":"四","FRI":"五","SAT":"六","SUN":"日"}
+                day_names = [cn_map.get(p, p) for p in parts if p in cn_map]
+                d += f" 星期{'、'.join(day_names)}"
             d += f" {sc.get('time','02:00')}\n"
         else: d += "定时: 未启用\n"
         self.detail.config(state=tk.NORMAL)
@@ -235,8 +242,18 @@ class App:
         ttk.Radiobutton(tf, text="每周", variable=self.sc_type, value="weekly").pack(side=tk.LEFT, padx=5)
         wf = ttk.Frame(of); wf.pack(fill=tk.X, padx=10, pady=5)
         ttk.Label(wf, text="星期:").pack(side=tk.LEFT)
-        self.sc_wd = ttk.Combobox(wf, values=["MON","TUE","WED","THU","FRI","SAT","SUN"], state="readonly", width=8)
-        self.sc_wd.set("MON"); self.sc_wd.pack(side=tk.LEFT, padx=5)
+        # 星期多选复选框
+        self.sc_wd_vars = {}
+        weekdays_cn = [("MON", "一"), ("TUE", "二"), ("WED", "三"), ("THU", "四"), ("FRI", "五"), ("SAT", "六"), ("SUN", "日")]
+        self.sc_wd_frame = ttk.Frame(wf)
+        self.sc_wd_frame.pack(side=tk.LEFT, padx=5)
+        for eng, cn in weekdays_cn:
+            v = tk.BooleanVar(value=False)
+            self.sc_wd_vars[eng] = v
+            ttk.Checkbutton(self.sc_wd_frame, text=cn, variable=v).pack(side=tk.LEFT, padx=2)
+        # 每天/每周切换控制星期可选性
+        self.sc_type.trace_add("write", lambda *a: self._sc_toggle_weekday())
+        self.sc_wd_frame.pack_forget()
         hf = ttk.Frame(of); hf.pack(fill=tk.X, padx=10, pady=5)
         ttk.Label(hf, text="执行时间:").pack(side=tk.LEFT)
         self.sc_h = ttk.Combobox(hf, values=[f"{h:02d}" for h in range(24)], state="readonly", width=5)
@@ -270,9 +287,24 @@ class App:
                     self.sc_type.set(sc.get("type","daily"))
                     t = sc.get("time","02:00")
                     p = t.split(":")
-                    if len(p)==3: self.sc_wd.set(p[0]); self.sc_h.set(p[1]); self.sc_m.set(p[2])
+                    if len(p)==3: self._set_sc_wd(p[0]); self.sc_h.set(p[1]); self.sc_m.set(p[2])
                     elif len(p)==2: self.sc_h.set(p[0]); self.sc_m.set(p[1])
                 break
+
+    def _sc_toggle_weekday(self):
+        """每天时星期不可选，每周时可选"""
+        self.sc_wd_frame.pack_forget()
+        if self.sc_type.get() == "weekly":
+            self.sc_wd_frame.pack(side=tk.LEFT, padx=5)
+
+    def _set_sc_wd(self, eng_code):
+        for k, v in self.sc_wd_vars.items():
+            v.set(k == eng_code)
+
+    def _sc_get_weekdays(self):
+        """获取选中的星期列表"""
+        selected = [k for k, v in self.sc_wd_vars.items() if v.get()]
+        return selected if selected else ["MON"]
 
     def _sc_mode_chg(self):
         if self.sc_mode.get()=="sqlagent":
@@ -309,7 +341,7 @@ class App:
                             ok2, msg2 = am.start_agent()
                             if not ok2: messagebox.showerror("错误",f"启动失败: {msg2}"); return
                     t = f"{self.sc_h.get()}:{self.sc_m.get()}"
-                    if self.sc_type.get()=="weekly": t = f"{self.sc_wd.get()}:{t}"
+                    if self.sc_type.get()=="weekly": t = "+".join(self._sc_get_weekdays())+":"+t
                     ok3, msg3 = am.create_backup_job(s.get("name",s["server"]),s.get("databases",["*"]),
                         s.get("backup_type","full"),s.get("output","D:\\SQLBackup"),t,s.get("retention_days",30))
                     if ok3:
@@ -330,7 +362,7 @@ class App:
         for s in self.config.get("servers",[]):
             if s.get("name",s["server"])==name:
                 t = f"{self.sc_h.get()}:{self.sc_m.get()}"
-                if self.sc_type.get()=="weekly": t = f"{self.sc_wd.get()}:{t}"
+                if self.sc_type.get()=="weekly": t = "+".join(self._sc_get_weekdays())+":"+t
                 s["schedule"] = {"enabled":True,"type":self.sc_type.get(),"time":t}
                 self._save(); messagebox.showinfo("成功",f"已保存到 {name}"); break
 
@@ -369,16 +401,74 @@ class App:
         self.st_cb.pack(padx=10, pady=10)
         ttk.Button(sf, text="📂 查看", command=self._st_refresh).pack(pady=5)
         self.st_info = ttk.Label(f, text=""); self.st_info.pack(anchor=tk.W, pady=5)
-        cols = ("name","size","mtime")
+        cols = ("name","size","mtime","type")
         self.st_tree = ttk.Treeview(f, columns=cols, show="headings", height=15)
-        self.st_tree.heading("name",text="文件名"); self.st_tree.heading("size",text="大小"); self.st_tree.heading("mtime",text="修改时间")
-        self.st_tree.column("name",width=350); self.st_tree.column("size",width=120); self.st_tree.column("mtime",width=150)
+        self.st_tree.heading("name",text="文件名"); self.st_tree.heading("size",text="大小")
+        self.st_tree.heading("mtime",text="修改时间"); self.st_tree.heading("type",text="存储位置")
+        self.st_tree.column("name",width=300); self.st_tree.column("size",width=100)
+        self.st_tree.column("mtime",width=130); self.st_tree.column("type",width=100)
         sb = ttk.Scrollbar(f, orient=tk.VERTICAL, command=self.st_tree.yview)
         self.st_tree.configure(yscrollcommand=sb.set)
         self.st_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True); sb.pack(side=tk.RIGHT, fill=tk.Y)
         names = [s.get("name",s["server"]) for s in self.config.get("servers",[])]
         self.st_cb["values"] = names
         if names: self.st_cb.set(names[0])
+        # 远程存储配置
+        rf = ttk.LabelFrame(f, text="远程存储配置 (FTP/SMB/NAS)"); rf.pack(fill=tk.X, pady=(10,0))
+        self.rp_mode = tk.StringVar(value="local")
+        rf.pack(fill=tk.X, pady=10)
+        def mkrow(label, key, default="", row=0):
+            rf2 = ttk.Frame(rf); rf2.pack(fill=tk.X, padx=10, pady=5)
+            ttk.Label(rf2, text=label).pack(side=tk.LEFT)
+            e = ttk.Entry(rf2, width=30)
+            e.insert(0, default); e.pack(side=tk.LEFT, padx=5); return e
+        self.rp_host = mkrow("主机:", "host", "", row=0)
+        self.rp_user = mkrow("用户名:", "user", "", row=1)
+        self.rp_pass = mkrow("密码:", "password", "", row=2)
+        self.rp_path = mkrow("远程路径:", "path", "", row=3)
+        self.rp_type = ttk.Combobox(rf, values=["local","ftp","smb","webdav"], state="readonly", width=10)
+        self.rp_type.set("local")
+        self.rp_type.pack(side=tk.LEFT, padx=10)
+        ttk.Button(rf, text="🔗 连接测试", command=self._st_test).pack(pady=10)
+        self.st_test_result = ttk.Label(rf, text=""); self.st_test_result.pack(anchor=tk.W, pady=5)
+
+    def _st_test(self):
+        """测试远程存储连接"""
+        mode = self.rp_type.get()
+        host = self.rp_host.get()
+        user = self.rp_user.get()
+        password = self.rp_pass.get()
+        path = self.rp_path.get()
+        self.st_test_result.config(text="测试中...", foreground="blue")
+        if mode == "local":
+            import os
+            ok = os.path.exists(path)
+            msg = f"✅ 本地路径存在" if ok else "❌ 路径不存在"
+        elif mode == "ftp":
+            try:
+                import ftplib
+                ftp = ftplib.FTP(host, timeout=10)
+                ftp.login(user, password)
+                ftp.quit()
+                ok = True; msg = "✅ FTP 连接成功"
+            except Exception as e:
+                ok = False; msg = f"❌ FTP 连接失败: {e}"
+        elif mode == "smb":
+            try:
+                import smbclient
+                smbclient.register_hostname(host)
+                smbclient.list(path, username=user, password=password)
+                ok = True; msg = "✅ SMB 连接成功"
+            except Exception as e:
+                ok = False; msg = f"❌ SMB 连接失败: {e}"
+        elif mode == "webdav":
+            try:
+                import requests
+                r = requests.get(f"http://{host}/{path}", auth=(user, password), timeout=10)
+                ok = r.status_code < 400; msg = f"✅ WebDAV 连接成功" if ok else f"❌ WebDAV 返回 {r.status_code}"
+            except Exception as e:
+                ok = False; msg = f"❌ WebDAV 连接失败: {e}"
+        self.st_test_result.config(text=msg, foreground="green" if ok else "red")
 
     def _st_refresh(self):
         for r in self.st_tree.get_children(): self.st_tree.delete(r)
@@ -389,7 +479,8 @@ class App:
                 info = BackupCleaner.get_info(out)
                 self.st_info.config(text=f"📁 {out}  |  文件: {info['file_count']} 个  |  总大小: {self._fmt(info['total_size'])}")
                 for f in info["files"]:
-                    self.st_tree.insert("", tk.END, values=(f["name"], self._fmt(f["size"]), f["mtime"]))
+                    storage_type = s.get("storage",{}).get("type", "本地")
+                    self.st_tree.insert("", tk.END, values=(f["name"], self._fmt(f["size"]), f["mtime"], storage_type))
                 break
 
     def _fmt(self, b):
