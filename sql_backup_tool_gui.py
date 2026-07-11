@@ -34,7 +34,7 @@ class App:
         mb = tk.Menu(self.root); self.root.config(menu=mb)
         fm = tk.Menu(mb, tearoff=0)
         fm.add_command(label="打开配置", command=self._open_config)
-        fm.add_command(label="保存配置", command=self._save_config)
+        fm.add_command(label="保存配置", command=self._save)
         fm.add_separator(); fm.add_command(label="导出日志", command=self._export_log)
         fm.add_separator(); fm.add_command(label="退出", command=self.root.quit)
         mb.add_cascade(label="文件", menu=fm)
