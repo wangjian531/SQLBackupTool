@@ -190,7 +190,7 @@ class SQLBackupGUI:
             f"服务器: {srv['server']}:{srv.get('port', 1433)}\n"
             f"用户名: {srv.get('username', 'sa')}\n"
             f"数据库: {', '.join(srv.get('databases', ['*']))}\n"
-            f"输出目录: {srv.get('output', 'D:\\SQLBackup')}\n"
+            "输出目录: " + srv.get('output', 'D:\\SQLBackup') + "\n"
             f"默认备份类型: {srv.get('backup_type', 'full')}\n"
             f"保留天数: {srv.get('retention_days', 0)}"
         )
