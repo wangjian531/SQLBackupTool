@@ -2,12 +2,25 @@ name: Build Windows EXE
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - name: GUI
+            file: sql_backup_gui.py
+            windowed: --windowed
+          - name: CLI
+            file: sql_backup_cli.py
+            windowed: --console
+          - name: Scheduler
+            file: sql_backup_scheduler.py
+            windowed: --console
+
     steps:
       - uses: actions/checkout@v4
 
@@ -20,15 +33,36 @@ jobs:
         run: |
           pip install pyinstaller pyodbc pymssql schedule requests
 
-      - name: Build EXE
+      - name: Build ${{ matrix.name }} EXE
         run: |
-          pyinstaller --onefile --windowed --name SQLBackupTool sql_backup_gui.py
+          pyinstaller --onefile ${{ matrix.windowed }} `
+            --name "SQLBackup_${{ matrix.name }}" `
+            --add-data "config.json;." `
+            --hidden-import pymssql `
+            --hidden-import pyodbc `
+            --hidden-import schedule `
+            ${{ matrix.file }}
+
+      - name: Upload ${{ matrix.name }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SQLBackup_${{ matrix.name }}
+          path: dist/SQLBackup_${{ matrix.name }}.exe
+
+  create_release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
       - name: Create Release
-        id: create_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: SQLBackupTool v1.0.${{ github.run_number }}
-          files: dist/SQLBackupTool.exe
+          files: artifacts/**/*.exe
           generate_release_notes: true
