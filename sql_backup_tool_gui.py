@@ -7,7 +7,7 @@ import os, json, threading, webbrowser, sys
 from tkinter import ttk, messagebox, filedialog, scrolledtext
 import tkinter as tk
 
-VERSION = "v1.1"
+VERSION = "v1.2"
 from sql_backup_tool_core import SQLAgentManager, BackupHistory, BackupCleaner, SoftwareScheduler, log
 from sql_backup_core import do_backup, load_config, send_email_notification
 
@@ -149,6 +149,11 @@ class App:
         ttk.Label(f, text="保留天数 (0=不删除):").grid(row=row, column=0, sticky=tk.W, pady=3)
         fr = ttk.Entry(f, width=10); fr.insert(0, str(v.get("retention_days",30)))
         fr.grid(row=row, column=1, sticky=tk.W, pady=3); row+=1
+        # 测试连接按钮和结果
+        tt = ttk.Frame(f); tt.grid(row=row, column=0, columnspan=2, pady=5, sticky=tk.W); row+=1
+        ttk.Button(tt, text="🔗 测试连接", command=lambda: self._test_connect(fs.get(), fp.get(), fu.get(), fpass.get())).pack(side=tk.LEFT)
+        self._conn_result = ttk.Label(tt, text="", foreground="gray")
+        self._conn_result.pack(side=tk.LEFT, padx=10)
         result = []
         def ok():
             data = {
@@ -168,6 +173,50 @@ class App:
         ttk.Button(bf, text="取消", command=d.destroy).pack(side=tk.LEFT, padx=5)
         self.root.wait_window(d)
         return result[0] if result else None
+
+    def _test_connect(self, server, port, username, password):
+        """测试SQL Server连接"""
+        import socket
+        import threading
+        port = int(port or 1433)
+        server = server.strip()
+        if not server or not password:
+            self._conn_result.config(text="❌ 服务器地址和密码不能为空", foreground="red")
+            return
+        self._conn_result.config(text="测试中...", foreground="blue")
+        result = [None]
+        def check():
+            try:
+                # 先检查端口是否可达
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)
+                sock.connect((server, port))
+                sock.close()
+                # 端口通了，尝试mssql连接
+                try:
+                    import pymssql
+                    conn = pymssql.connect(server=server, port=port, user=username, password=password, timeout=5)
+                    conn.close()
+                    result[0] = True
+                except ImportError:
+                    result[0] = "port_ok"
+                except Exception as e:
+                    result[0] = f"mssql_error: {e}"
+            except Exception as e:
+                result[0] = f"{e}"
+        t = threading.Thread(target=check, daemon=True)
+        t.start()
+        def poll():
+            if result[0] is not None:
+                if result[0] is True:
+                    self._conn_result.config(text="✅ 连接成功", foreground="green")
+                elif result[0] == "port_ok":
+                    self._conn_result.config(text="✅ 端口可达 (pymssql未安装)", foreground="green")
+                else:
+                    self._conn_result.config(text=f"❌ {result[0]}", foreground="red")
+            else:
+                self.root.after(200, poll)
+        self.root.after(200, poll)
 
     def _add(self):
         r = self._dialog("添加服务器")
@@ -459,7 +508,7 @@ class App:
             try:
                 import smbclient
                 smbclient.register_hostname(host)
-                smbclient.list(path, username=user, password=***
+                smbclient.list(path, username=user, password=password)
                 ok = True; msg = "✅ SMB 连接成功"
             except ImportError:
                 ok = False; msg = "❌ 未安装 smbprotocol 库，请先 pip install smbprotocol"
