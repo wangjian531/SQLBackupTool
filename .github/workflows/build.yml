@@ -59,10 +59,14 @@ jobs:
           path: artifacts
 
       - name: Create Release
+        id: tag
+        run: echo "TAG=v1.0.$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.$(date +%Y%m%d)
-          name: SQLBackupTool v1.0.$(date +%Y%m%d)
+          tag_name: ${{ steps.tag.outputs.TAG }}
+          name: SQLBackupTool ${{ steps.tag.outputs.TAG }}
           files: artifacts/*.exe
           generate_release_notes: true
           overwrite_files: true
