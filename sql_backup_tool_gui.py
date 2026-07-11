@@ -470,14 +470,14 @@ class App:
         ttk.Label(tf, text="存储类型:").pack(side=tk.LEFT)
         self.rp_cb = ttk.Combobox(tf, textvariable=self.rp_type, values=["local","ftp","smb","webdav"], state="readonly", width=10)
         self.rp_cb.set("local"); self.rp_cb.pack(side=tk.LEFT, padx=5)
-        def mkrow(label, key, default=""):
+        def mkrow(label, key, default="", show=""):
             rf2 = ttk.Frame(rf); rf2.pack(fill=tk.X, padx=10, pady=5)
             ttk.Label(rf2, text=label).pack(side=tk.LEFT)
-            e = ttk.Entry(rf2, width=30)
+            e = ttk.Entry(rf2, width=30, show=show)
             e.insert(0, default); e.pack(side=tk.LEFT, padx=5); return e
         self.rp_host = mkrow("主机:", "host", "")
         self.rp_user = mkrow("用户名:", "user", "")
-        self.rp_pass = mkrow("密码:", "password", "")
+        self.rp_pass = mkrow("密码:", "password", "", show="*")
         self.rp_path = mkrow("远程路径:", "path", "")
         self.st_test_result = ttk.Label(rf, text=""); self.st_test_result.pack(anchor=tk.W, pady=5)
         bf = ttk.Frame(rf); bf.pack(fill=tk.X, padx=10, pady=5)
@@ -507,9 +507,13 @@ class App:
         elif mode == "smb":
             try:
                 import smbclient
-                smbclient.register_hostname(host)
-                smbclient.list(path, username=user, password=password)
-                ok = True; msg = "✅ SMB 连接成功"
+                # 测试连接 - 列出共享目录
+                share_list = smbclient.list_shares(host, username=user, password=password)
+                shares = [s.name for s in share_list]
+                # 尝试连接指定路径
+                if path:
+                    smbclient.list(path, username=user, password=password)
+                ok = True; msg = f"✅ SMB 连接成功，共享目录: {' / '.join(shares)}"
             except ImportError:
                 ok = False; msg = "❌ 未安装 smbprotocol 库，请先 pip install smbprotocol"
             except Exception as e:
