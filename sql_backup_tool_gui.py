@@ -395,42 +395,44 @@ class App:
     # ── 存储管理 ──
     def _tab_storage(self):
         f = ttk.Frame(self.t4, padding=10); f.pack(fill=tk.BOTH, expand=True)
-        sf = ttk.LabelFrame(f, text="选择服务器"); sf.pack(fill=tk.X, pady=10)
+        # 左半部分：服务器本地备份查看
+        left = ttk.Frame(f); left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sf = ttk.LabelFrame(left, text="选择服务器"); sf.pack(fill=tk.X, pady=10)
         self.st_var = tk.StringVar()
         self.st_cb = ttk.Combobox(sf, textvariable=self.st_var, width=50, state="readonly")
         self.st_cb.pack(padx=10, pady=10)
         ttk.Button(sf, text="📂 查看", command=self._st_refresh).pack(pady=5)
-        self.st_info = ttk.Label(f, text=""); self.st_info.pack(anchor=tk.W, pady=5)
-        cols = ("name","size","mtime","type")
-        self.st_tree = ttk.Treeview(f, columns=cols, show="headings", height=15)
-        self.st_tree.heading("name",text="文件名"); self.st_tree.heading("size",text="大小")
-        self.st_tree.heading("mtime",text="修改时间"); self.st_tree.heading("type",text="存储位置")
-        self.st_tree.column("name",width=300); self.st_tree.column("size",width=100)
-        self.st_tree.column("mtime",width=130); self.st_tree.column("type",width=100)
-        sb = ttk.Scrollbar(f, orient=tk.VERTICAL, command=self.st_tree.yview)
+        self.st_info = ttk.Label(left, text=""); self.st_info.pack(anchor=tk.W, pady=5)
+        cols = ("name","size","mtime")
+        self.st_tree = ttk.Treeview(left, columns=cols, show="headings", height=15)
+        self.st_tree.heading("name",text="文件名"); self.st_tree.heading("size",text="大小"); self.st_tree.heading("mtime",text="修改时间")
+        self.st_tree.column("name",width=300); self.st_tree.column("size",width=100); self.st_tree.column("mtime",width=130)
+        sb = ttk.Scrollbar(left, orient=tk.VERTICAL, command=self.st_tree.yview)
         self.st_tree.configure(yscrollcommand=sb.set)
         self.st_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True); sb.pack(side=tk.RIGHT, fill=tk.Y)
         names = [s.get("name",s["server"]) for s in self.config.get("servers",[])]
         self.st_cb["values"] = names
         if names: self.st_cb.set(names[0])
-        # 远程存储配置
-        rf = ttk.LabelFrame(f, text="远程存储配置 (FTP/SMB/NAS)"); rf.pack(fill=tk.X, pady=(10,0))
-        self.rp_mode = tk.StringVar(value="local")
-        rf.pack(fill=tk.X, pady=10)
-        def mkrow(label, key, default="", row=0):
+        # 右半部分：远程存储配置
+        right = ttk.Frame(f); right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=10)
+        rf = ttk.LabelFrame(right, text="远程存储配置 (FTP/SMB/NAS)"); rf.pack(fill=tk.BOTH, expand=True)
+        self.rp_type = tk.StringVar(value="local")
+        tf = ttk.Frame(rf); tf.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(tf, text="存储类型:").pack(side=tk.LEFT)
+        self.rp_cb = ttk.Combobox(tf, textvariable=self.rp_type, values=["local","ftp","smb","webdav"], state="readonly", width=10)
+        self.rp_cb.set("local"); self.rp_cb.pack(side=tk.LEFT, padx=5)
+        def mkrow(label, key, default=""):
             rf2 = ttk.Frame(rf); rf2.pack(fill=tk.X, padx=10, pady=5)
             ttk.Label(rf2, text=label).pack(side=tk.LEFT)
             e = ttk.Entry(rf2, width=30)
             e.insert(0, default); e.pack(side=tk.LEFT, padx=5); return e
-        self.rp_host = mkrow("主机:", "host", "", row=0)
-        self.rp_user = mkrow("用户名:", "user", "", row=1)
-        self.rp_pass = mkrow("密码:", "password", "", row=2)
-        self.rp_path = mkrow("远程路径:", "path", "", row=3)
-        self.rp_type = ttk.Combobox(rf, values=["local","ftp","smb","webdav"], state="readonly", width=10)
-        self.rp_type.set("local")
-        self.rp_type.pack(side=tk.LEFT, padx=10)
-        ttk.Button(rf, text="🔗 连接测试", command=self._st_test).pack(pady=10)
+        self.rp_host = mkrow("主机:", "host", "")
+        self.rp_user = mkrow("用户名:", "user", "")
+        self.rp_pass = mkrow("密码:", "password", "")
+        self.rp_path = mkrow("远程路径:", "path", "")
         self.st_test_result = ttk.Label(rf, text=""); self.st_test_result.pack(anchor=tk.W, pady=5)
+        bf = ttk.Frame(rf); bf.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Button(bf, text="🔗 连接测试", command=self._st_test).pack(side=tk.LEFT)
 
     def _st_test(self):
         """测试远程存储连接"""
@@ -457,8 +459,10 @@ class App:
             try:
                 import smbclient
                 smbclient.register_hostname(host)
-                smbclient.list(path, username=user, password=password)
+                smbclient.list(path, username=user, password=***
                 ok = True; msg = "✅ SMB 连接成功"
+            except ImportError:
+                ok = False; msg = "❌ 未安装 smbprotocol 库，请先 pip install smbprotocol"
             except Exception as e:
                 ok = False; msg = f"❌ SMB 连接失败: {e}"
         elif mode == "webdav":

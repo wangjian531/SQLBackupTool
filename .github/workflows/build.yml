@@ -25,7 +25,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller pyodbc pymssql schedule requests
+          pip install pyinstaller pyodbc pymssql schedule requests smbprotocol
 
       - name: Build EXE
         run: |
