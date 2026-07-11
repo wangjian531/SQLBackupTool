@@ -1,0 +1,13 @@
+2026-07-09 15:56:34,683 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.6.202:5000
+2026-07-09 15:56:34,683 [INFO] [33mPress CTRL+C to quit[0m
+2026-07-09 15:56:36,553 [INFO] 127.0.0.1 - - [09/Jul/2026 15:56:36] "GET / HTTP/1.1" 200 -
+2026-07-09 15:56:36,562 [INFO] 127.0.0.1 - - [09/Jul/2026 15:56:36] "GET /api/servers HTTP/1.1" 200 -
+2026-07-09 15:57:18,986 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.6.202:5000
+2026-07-09 15:57:18,986 [INFO] [33mPress CTRL+C to quit[0m
+2026-07-09 15:57:21,856 [INFO] 127.0.0.1 - - [09/Jul/2026 15:57:21] "GET / HTTP/1.1" 200 -

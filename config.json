@@ -1,0 +1,36 @@
+{
+  "servers": [
+    {
+      "name": "示例服务器",
+      "server": "127.0.0.1",
+      "port": 1433,
+      "username": "sa",
+      "password": "",
+      "databases": ["*"],
+      "backup_type": "full",
+      "output": "D:\\SQLBackup",
+      "compress": false,
+      "retention_days": 7,
+      "cloud": null,
+      "schedule": null
+    }
+  ],
+  "cloud": {
+    "aliyun": {
+      "refresh_token": "",
+      "drive_id": ""
+    },
+    "baidu": {
+      "app_key": "",
+      "app_secret": "",
+      "access_token": ""
+    }
+  },
+  "email": {
+    "smtp_server": "",
+    "smtp_port": 465,
+    "sender": "",
+    "password": "",
+    "receivers": []
+  }
+}

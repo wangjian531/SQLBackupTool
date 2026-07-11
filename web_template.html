@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Server 备份工具</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a73e8, #0d47a1);
+            color: white;
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .header h1 { font-size: 18px; font-weight: 600; }
+        .header .subtitle { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+        .header .actions { display: flex; gap: 8px; }
+        .container {
+            display: flex;
+            height: calc(100vh - 56px);
+            padding: 10px;
+            gap: 10px;
+        }
+        .left-panel {
+            width: 300px;
+            min-width: 300px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        .right-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .panel-title {
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .server-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px;
+        }
+        .server-item {
+            padding: 8px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-bottom: 3px;
+            transition: background 0.15s;
+            border: 1px solid transparent;
+        }
+        .server-item:hover { background: #f5f7fa; }
+        .server-item.active {
+            background: #e8f0fe;
+            border-color: #1a73e8;
+        }
+        .server-item .name { font-weight: 500; font-size: 13px; }
+        .server-item .info { font-size: 11px; color: #888; margin-top: 1px; }
+        .server-item .badge {
+            display: inline-block;
+            padding: 0 6px;
+            border-radius: 8px;
+            font-size: 10px;
+            background: #e8f0fe;
+            color: #1a73e8;
+        }
+        .panel-actions {
+            padding: 8px 10px;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .panel-actions button { flex: 1; min-width: 60px; }
+        .detail-panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .detail-content {
+            padding: 10px 14px;
+            font-size: 12px;
+            line-height: 1.8;
+            min-height: 80px;
+        }
+        .detail-content .label { color: #888; }
+        .detail-content .value { color: #333; font-weight: 500; }
+        .backup-options {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .backup-options label { font-size: 12px; color: #555; display: flex; align-items: center; gap: 4px; }
+        .backup-options select, .backup-options input {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .log-panel {
+            flex: 1;
+            background: #1e1e1e;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .log-header {
+            padding: 8px 14px;
+            color: #ccc;
+            font-size: 12px;
+            font-weight: 600;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .log-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 12px;
+            font-family: "Consolas", "Courier New", monospace;
+            font-size: 11px;
+            line-height: 1.6;
+        }
+        .log-line { white-space: pre-wrap; word-break: break-all; }
+        .log-info { color: #d4d4d4; }
+        .log-warning { color: #e8bf6a; }
+        .log-error { color: #f44747; }
+        .log-success { color: #4ec9b0; }
+        .log-time { color: #888; }
+        button {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 5px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        button:active { transform: scale(0.96); }
+        .btn-primary { background: #1a73e8; color: white; }
+        .btn-primary:hover { background: #1557b0; }
+        .btn-primary:disabled { background: #93b8f0; cursor: not-allowed; }
+        .btn-success { background: #34a853; color: white; }
+        .btn-success:hover { background: #2d8f47; }
+        .btn-danger { background: #ea4335; color: white; }
+        .btn-danger:hover { background: #c5221f; }
+        .btn-danger:disabled { background: #f0a8a3; cursor: not-allowed; }
+        .btn-warning { background: #fbbc04; color: #333; }
+        .btn-warning:hover { background: #e0a800; }
+        .btn-outline {
+            background: transparent;
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.5);
+        }
+        .btn-outline:hover { background: rgba(255,255,255,0.1); }
+        .btn-sm { padding: 3px 8px; font-size: 11px; }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            width: 480px;
+            max-width: 90vw;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        .modal h2 { font-size: 16px; margin-bottom: 14px; }
+        .modal h3 { font-size: 14px; margin: 12px 0 8px; color: #555; }
+        .form-group { margin-bottom: 10px; }
+        .form-group label { display: block; font-size: 12px; color: #555; margin-bottom: 3px; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #999;
+            font-size: 13px;
+        }
+        .empty-state .icon { font-size: 36px; margin-bottom: 8px; }
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 10px 18px;
+            border-radius: 8px;
+            color: white;
+            font-size: 13px;
+            z-index: 2000;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .toast.show { opacity: 1; }
+        .toast.success { background: #34a853; }
+        .toast.error { background: #ea4335; }
+        .toast.info { background: #1a73e8; }
+        .status-dot {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .status-dot.green { background: #34a853; }
+        .status-dot.red { background: #ea4335; }
+        @media (max-width: 768px) {
+            .container { flex-direction: column; }
+            .left-panel { width: 100%; min-width: unset; max-height: 200px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>🗄️ SQL Server 备份工具</h1>
+            <div class="subtitle">支持本地 / 共享文件夹 / 网盘</div>
+        </div>
+        <div class="actions">
+            <button class="btn-outline btn-sm" onclick="showConfig()">⚙️ 配置</button>
+            <button class="btn-outline btn-sm" onclick="exportLog()">📥 导出日志</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 左侧 -->
+        <div class="left-panel">
+            <div class="panel-title">
+                <span>📋 服务器列表</span>
+                <span id="serverCount" style="font-size:11px;color:#999;">0</span>
+            </div>
+            <div class="server-list" id="serverList"></div>
+            <div class="panel-actions">
+                <button class="btn-primary btn-sm" onclick="showAddServer()">➕ 添加</button>
+                <button class="btn-warning btn-sm" onclick="showEditServer()">✏️ 编辑</button>
+                <button class="btn-danger btn-sm" onclick="deleteServer()">🗑️ 删除</button>
+            </div>
+        </div>
+
+        <!-- 右侧 -->
+        <div class="right-panel">
+            <div class="detail-panel">
+                <div class="panel-title">
+                    <span>📄 服务器详情</span>
+                </div>
+                <div class="detail-content" id="detailContent">
+                    <div class="empty-state">
+                        <div class="icon">📋</div>
+                        <div>请选择一个服务器</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="backup-options">
+                <label>备份类型:
+                    <select id="backupType">
+                        <option value="full">全量备份</option>
+                        <option value="diff">差异备份</option>
+                        <option value="log">日志备份</option>
+                    </select>
+                </label>
+                <label>保留天数:
+                    <input type="number" id="retentionDays" value="7" min="0" style="width:55px;">
+                </label>
+                <label>
+                    <input type="checkbox" id="compressCheck"> 7z 压缩
+                </label>
+                <button class="btn-success" id="btnBackup" onclick="runBackup()">▶ 执行备份</button>
+                <button class="btn-primary" id="btnAll" onclick="runAll()">▶ 备份全部</button>
+                <button class="btn-danger" id="btnStop" onclick="stopBackup()" disabled>⏹ 停止</button>
+                <span id="statusHint" style="font-size:11px;color:#999;"></span>
+            </div>
+
+            <div class="log-panel">
+                <div class="log-header">
+                    <span>📝 执行日志</span>
+                    <button class="btn-sm" onclick="clearLog()" style="background:#333;color:#ccc;">清空</button>
+                </div>
+                <div class="log-content" id="logContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加/编辑服务器弹窗 -->
+    <div class="modal-overlay" id="serverModal">
+        <div class="modal">
+            <h2 id="modalTitle">添加服务器</h2>
+            <div class="form-group">
+                <label>名称</label>
+                <input id="f_name" placeholder="例如: 正式库">
+            </div>
+            <div class="form-group">
+                <label>服务器地址</label>
+                <input id="f_server" placeholder="127.0.0.1">
+            </div>
+            <div class="form-group">
+                <label>端口</label>
+                <input id="f_port" value="1433">
+            </div>
+            <div class="form-group">
+                <label>用户名</label>
+                <input id="f_user" value="sa">
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input id="f_pass" type="password">
+            </div>
+            <div class="form-group">
+                <label>数据库（逗号分隔，* 为全部）</label>
+                <input id="f_dbs" value="*">
+            </div>
+            <div class="form-group">
+                <label>输出目录</label>
+                <input id="f_output" value="D:\\SQLBackup">
+            </div>
+            <div class="modal-actions">
+                <button onclick="closeModal()">取消</button>
+                <button class="btn-primary" id="modalSaveBtn" onclick="saveServer()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 全局配置弹窗 -->
+    <div class="modal-overlay" id="configModal">
+        <div class="modal">
+            <h2>⚙️ 全局配置</h2>
+            <h3>📧 邮件通知</h3>
+            <div class="form-group">
+                <label>SMTP 服务器</label>
+                <input id="cf_smtp" placeholder="smtp.qq.com">
+            </div>
+            <div class="form-group">
+                <label>SMTP 端口</label>
+                <input id="cf_smtp_port" value="465">
+            </div>
+            <div class="form-group">
+                <label>发件邮箱</label>
+                <input id="cf_email" placeholder="your@qq.com">
+            </div>
+            <div class="form-group">
+                <label>邮箱密码/授权码</label>
+                <input id="cf_email_pass" type="password">
+            </div>
+            <div class="form-group">
+                <label>收件人（逗号分隔）</label>
+                <input id="cf_receivers" placeholder="admin@company.com">
+            </div>
+            <h3>☁️ 阿里云盘</h3>
+            <div class="form-group">
+                <label>Refresh Token</label>
+                <input id="cf_ali_refresh" placeholder="阿里云盘 refresh_token">
+            </div>
+            <div class="form-group">
+                <label>Drive ID</label>
+                <input id="cf_ali_drive" placeholder="留空自动获取">
+            </div>
+            <h3>☁️ 百度网盘</h3>
+            <div class="form-group">
+                <label>App Key</label>
+                <input id="cf_bd_key" placeholder="百度网盘 app_key">
+            </div>
+            <div class="form-group">
+                <label>App Secret</label>
+                <input id="cf_bd_secret" type="password">
+            </div>
+            <div class="form-group">
+                <label>Access Token</label>
+                <input id="cf_bd_token" placeholder="百度网盘 access_token">
+            </div>
+            <div class="modal-actions">
+                <button onclick="closeConfig()">取消</button>
+                <button class="btn-primary" onclick="saveConfig()">保存配置</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        let selectedIndex = -1;
+        let editingIndex = -1;
+        let pollTimer = null;
+
+        async function loadServers() {
+            const res = await fetch('/api/servers');
+            const data = await res.json();
+            const list = document.getElementById('serverList');
+            document.getElementById('serverCount').textContent = data.servers.length;
+            list.innerHTML = '';
+
+            if (data.servers.length === 0) {
+                list.innerHTML = '<div class="empty-state"><div class="icon">📋</div><div>暂无服务器配置</div><button class="btn-primary btn-sm" onclick="showAddServer()" style="margin-top:10px;">添加第一个</button></div>';
+                document.getElementById('detailContent').innerHTML = '<div class="empty-state"><div class="icon">📋</div><div>请选择一个服务器</div></div>';
+                return;
+            }
+
+            data.servers.forEach((srv, i) => {
+                const div = document.createElement('div');
+                div.className = 'server-item' + (i === selectedIndex ? ' active' : '');
+                const dbStr = srv.databases && srv.databases[0] === '*' ? '所有数据库' : srv.databases.join(', ');
+                div.innerHTML = `<div class="name">${srv.name || srv.server}</div>
+                    <div class="info">${srv.server}:${srv.port} · <span class="badge">${dbStr}</span></div>`;
+                div.onclick = () => { selectedIndex = i; loadServers(); };
+                list.appendChild(div);
+            });
+
+            if (selectedIndex >= data.servers.length) selectedIndex = 0;
+            if (selectedIndex >= 0) showDetail(data.servers[selectedIndex]);
+        }
+
+        function showDetail(srv) {
+            const el = document.getElementById('detailContent');
+            const dbs = srv.databases && srv.databases[0] === '*' ? '所有数据库' : srv.databases.join(', ');
+            el.innerHTML = `
+                <div><span class="label">服务器：</span><span class="value">${srv.server}:${srv.port}</span></div>
+                <div><span class="label">用户名：</span><span class="value">${srv.username || 'sa'}</span></div>
+                <div><span class="label">数据库：</span><span class="value">${dbs}</span></div>
+                <div><span class="label">输出目录：</span><span class="value">${srv.output || 'D:\\SQLBackup'}</span></div>
+                <div><span class="label">备份类型：</span><span class="value">${srv.backup_type || 'full'}</span></div>
+                <div><span class="label">保留天数：</span><span class="value">${srv.retention_days || 0}</span></div>
+            `;
+        }
+
+        function showAddServer() {
+            editingIndex = -1;
+            document.getElementById('modalTitle').textContent = '添加服务器';
+            document.getElementById('modalSaveBtn').textContent = '添加';
+            ['f_name','f_server','f_port','f_user','f_pass','f_dbs','f_output'].forEach(id => document.getElementById(id).value = '');
+            document.getElementById('f_port').value = '1433';
+            document.getElementById('f_user').value = 'sa';
+            document.getElementById('f_output').value = 'D:\\SQLBackup';
+            document.getElementById('f_dbs').value = '*';
+            document.getElementById('serverModal').classList.add('show');
+        }
+
+        function showEditServer() {
+            if (selectedIndex < 0) { showToast('请先选择一个服务器', 'error'); return; }
+            editingIndex = selectedIndex;
+            document.getElementById('modalTitle').textContent = '编辑服务器';
+            document.getElementById('modalSaveBtn').textContent = '保存';
+            fetch('/api/servers').then(r => r.json()).then(data => {
+                const srv = data.servers[selectedIndex];
+                document.getElementById('f_name').value = srv.name || '';
+                document.getElementById('f_server').value = srv.server || '';
+                document.getElementById('f_port').value = srv.port || 1433;
+                document.getElementById('f_user').value = srv.username || 'sa';
+                document.getElementById('f_pass').value = srv.password || '';
+                document.getElementById('f_dbs').value = (srv.databases || ['*']).join(',');
+                document.getElementById('f_output').value = srv.output || 'D:\\SQLBackup';
+                document.getElementById('serverModal').classList.add('show');
+            });
+        }
+
+        async function saveServer() {
+            const data = {
+                name: document.getElementById('f_name').value,
+                server: document.getElementById('f_server').value,
+                port: parseInt(document.getElementById('f_port').value) || 1433,
+                username: document.getElementById('f_user').value || 'sa',
+                password: document.getElementById('f_pass').value,
+                databases: document.getElementById('f_dbs').value.split(',').map(s => s.trim()),
+                output: document.getElementById('f_output').value || 'D:\\SQLBackup',
+                backup_type: 'full', compress: false, retention_days: 7
+            };
+            if (!data.server) { showToast('请输入服务器地址', 'error'); return; }
+            const url = editingIndex >= 0 ? `/api/servers/${editingIndex}` : '/api/servers';
+            const res = await fetch(url, {
+                method: editingIndex >= 0 ? 'PUT' : 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            if (res.ok) {
+                showToast(editingIndex >= 0 ? '已更新服务器' : '已添加服务器', 'success');
+                closeModal();
+                selectedIndex = editingIndex >= 0 ? editingIndex : -1;
+                loadServers();
+            } else { showToast('操作失败', 'error'); }
+        }
+
+        async function deleteServer() {
+            if (selectedIndex < 0) { showToast('请先选择一个服务器', 'error'); return; }
+            if (!confirm('确定删除这个服务器配置吗？')) return;
+            const res = await fetch(`/api/servers/${selectedIndex}`, { method: 'DELETE' });
+            if (res.ok) { showToast('已删除服务器', 'success'); selectedIndex = -1; loadServers(); }
+        }
+
+        function closeModal() { document.getElementById('serverModal').classList.remove('show'); }
+
+        async function showConfig() {
+            const res = await fetch('/api/config');
+            const cfg = await res.json();
+            document.getElementById('cf_smtp').value = cfg.email?.smtp_server || '';
+            document.getElementById('cf_smtp_port').value = cfg.email?.smtp_port || 465;
+            document.getElementById('cf_email').value = cfg.email?.sender || '';
+            document.getElementById('cf_email_pass').value = cfg.email?.password || '';
+            document.getElementById('cf_receivers').value = (cfg.email?.receivers || []).join(',');
+            document.getElementById('cf_ali_refresh').value = cfg.cloud?.aliyun?.refresh_token || '';
+            document.getElementById('cf_ali_drive').value = cfg.cloud?.aliyun?.drive_id || '';
+            document.getElementById('cf_bd_key').value = cfg.cloud?.baidu?.app_key || '';
+            document.getElementById('cf_bd_secret').value = cfg.cloud?.baidu?.app_secret || '';
+            document.getElementById('cf_bd_token').value = cfg.cloud?.baidu?.access_token || '';
+            document.getElementById('configModal').classList.add('show');
+        }
+
+        async function saveConfig() {
+            const cfg = {
+                email: {
+                    smtp_server: document.getElementById('cf_smtp').value,
+                    smtp_port: parseInt(document.getElementById('cf_smtp_port').value) || 465,
+                    sender: document.getElementById('cf_email').value,
+                    password: document.getElementById('cf_email_pass').value,
+                    receivers: document.getElementById('cf_receivers').value.split(',').map(s => s.trim()).filter(Boolean)
+                },
+                cloud: {
+                    aliyun: { refresh_token: document.getElementById('cf_ali_refresh').value, drive_id: document.getElementById('cf_ali_drive').value },
+                    baidu: { app_key: document.getElementById('cf_bd_key').value, app_secret: document.getElementById('cf_bd_secret').value, access_token: document.getElementById('cf_bd_token').value }
+                }
+            };
+            const res = await fetch('/api/config', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cfg) });
+            if (res.ok) { showToast('配置已保存', 'success'); closeConfig(); } else { showToast('保存失败', 'error'); }
+        }
+
+        function closeConfig() { document.getElementById('configModal').classList.remove('show'); }
+
+        async function runBackup() {
+            if (selectedIndex < 0) { showToast('请先选择一个服务器', 'error'); return; }
+            setRunning(true);
+            const res = await fetch('/api/backup', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    index: selectedIndex,
+                    backup_type: document.getElementById('backupType').value,
+                    retention_days: parseInt(document.getElementById('retentionDays').value) || 7,
+                    compress: document.getElementById('compressCheck').checked
+                })
+            });
+            if (!res.ok) { showToast('备份请求失败', 'error'); setRunning(false); }
+        }
+
+        async function runAll() {
+            setRunning(true);
+            const res = await fetch('/api/backup/all', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    backup_type: document.getElementById('backupType').value,
+                    retention_days: parseInt(document.getElementById('retentionDays').value) || 7,
+                    compress: document.getElementById('compressCheck').checked
+                })
+            });
+            if (!res.ok) { showToast('备份请求失败', 'error'); setRunning(false); }
+        }
+
+        async function stopBackup() { await fetch('/api/backup/stop', { method: 'POST' }); }
+
+        function setRunning(r) {
+            document.getElementById('btnBackup').disabled = r;
+            document.getElementById('btnAll').disabled = r;
+            document.getElementById('btnStop').disabled = !r;
+            document.getElementById('statusHint').textContent = r ? '⏳ 备份执行中...' : '';
+        }
+
+        function startLogPoll() {
+            pollTimer = setInterval(async () => {
+                const [logsRes, statusRes] = await Promise.all([
+                    fetch('/api/logs'),
+                    fetch('/api/backup/status')
+                ]);
+                const logs = await logsRes.json();
+                const status = await statusRes.json();
+                const el = document.getElementById('logContent');
+                el.innerHTML = logs.logs.map(l =>
+                    `<div class="log-line log-${l.level.toLowerCase()}"><span class="log-time">[${l.time}]</span> ${l.message}</div>`
+                ).join('');
+                el.scrollTop = el.scrollHeight;
+                if (!status.running && document.getElementById('btnStop').disabled === false) {
+                    setRunning(false);
+                }
+            }, 1000);
+        }
+
+        function clearLog() { fetch('/api/logs/clear', { method: 'POST' }); }
+
+        async function exportLog() {
+            const res = await fetch('/api/logs/export');
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `sqlbackup_${new Date().toISOString().slice(0,10)}.log`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function showToast(msg, type = 'info') {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.className = `toast ${type} show`;
+            setTimeout(() => el.classList.remove('show'), 3000);
+        }
+
+        loadServers();
+        startLogPoll();
+    </script>
+</body>
+</html>

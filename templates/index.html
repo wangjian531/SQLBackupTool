@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Server 备份工具</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a73e8, #0d47a1);
+            color: #fff;
+            padding: 20px 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.15);
+        }
+        .header h1 { font-size: 24px; font-weight: 600; }
+        .header p { font-size: 13px; opacity: .8; margin-top: 4px; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+        .row { display: flex; gap: 20px; flex-wrap: wrap; }
+        .col-left { flex: 1; min-width: 320px; }
+        .col-right { flex: 1.5; min-width: 400px; }
+
+        .card {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.08);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .card-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #eee;
+            font-weight: 600;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-body { padding: 15px 20px; }
+
+        .server-item {
+            padding: 12px 15px;
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all .2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .server-item:hover { border-color: #1a73e8; background: #f8fbff; }
+        .server-item.active { border-color: #1a73e8; background: #e8f0fe; }
+        .server-item .name { font-weight: 500; }
+        .server-item .info { font-size: 12px; color: #888; margin-top: 2px; }
+        .server-item .badge {
+            background: #e8f0fe; color: #1a73e8;
+            padding: 2px 10px; border-radius: 12px;
+            font-size: 12px; font-weight: 500;
+        }
+
+        .option-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+        .option-group label {
+            font-size: 13px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .option-group select, .option-group input {
+            padding: 6px 10px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            font-size: 13px;
+            background: #fff;
+        }
+        .option-group input[type="number"] { width: 60px; }
+        .option-group input[type="checkbox"] { width: 16px; height: 16px; }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all .2s;
+        }
+        .btn-primary { background: #1a73e8; color: #fff; }
+        .btn-primary:hover { background: #1557b0; }
+        .btn-primary:disabled { background: #a0c4ff; cursor: not-allowed; }
+        .btn-success { background: #34a853; color: #fff; }
+        .btn-success:hover { background: #2d8f47; }
+        .btn-danger { background: #ea4335; color: #fff; }
+        .btn-danger:hover { background: #c5221f; }
+        .btn-outline { background: #fff; color: #333; border: 1px solid #d9d9d9; }
+        .btn-outline:hover { border-color: #1a73e8; color: #1a73e8; }
+        .btn-sm { padding: 6px 14px; font-size: 12px; }
+
+        .log-box {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: "Consolas", "Courier New", monospace;
+            font-size: 13px;
+            padding: 15px;
+            border-radius: 8px;
+            height: 400px;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+        .log-box .time { color: #888; }
+        .log-box .info { color: #d4d4d4; }
+        .log-box .success { color: #4ec9b0; }
+        .log-box .warning { color: #e8bf6a; }
+        .log-box .error { color: #f44747; }
+
+        .progress-bar {
+            height: 6px;
+            background: #e8e8e8;
+            border-radius: 3px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            background: linear-gradient(90deg, #1a73e8, #34a853);
+            border-radius: 3px;
+            transition: width .3s;
+            width: 0%;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 15px;
+            background: #f6f8fa;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.idle { background: #888; }
+        .status-dot.running { background: #34a853; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+        .modal-overlay {
+            display: none;
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,.4);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: #fff;
+            border-radius: 12px;
+            padding: 24px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal h2 { margin-bottom: 16px; }
+        .modal .form-group { margin-bottom: 12px; }
+        .modal .form-group label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
+        .modal .form-group input, .modal .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .modal .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+
+        .tab-bar { display: flex; border-bottom: 2px solid #eee; margin-bottom: 15px; }
+        .tab-bar .tab {
+            padding: 8px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #888;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all .2s;
+        }
+        .tab-bar .tab.active { color: #1a73e8; border-bottom-color: #1a73e8; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .empty-state { text-align: center; padding: 40px; color: #999; }
+        .empty-state .icon { font-size: 48px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🗄️ SQL Server 备份工具</h1>
+        <p>Web 管理界面 v1.0</p>
+    </div>
+
+    <div class="container">
+        <div class="row">
+            <!-- 左侧：服务器列表 + 配置 -->
+            <div class="col-left">
+                <!-- 服务器列表 -->
+                <div class="card">
+                    <div class="card-header">
+                        <span>📋 服务器列表</span>
+                        <button class="btn btn-sm btn-outline" onclick="showAddServer()" style="margin-left:auto;">➕ 添加</button>
+                    </div>
+                    <div class="card-body" id="serverList">
+                        <div class="empty-state">
+                            <div class="icon">📭</div>
+                            <div>暂无服务器配置</div>
+                            <button class="btn btn-sm btn-primary" onclick="showAddServer()" style="margin-top:10px;">添加服务器</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 备份选项 -->
+                <div class="card">
+                    <div class="card-header">⚙️ 备份选项</div>
+                    <div class="card-body">
+                        <div class="option-group">
+                            <label>类型:
+                                <select id="backupType">
+                                    <option value="full">全量备份</option>
+                                    <option value="diff">差异备份</option>
+                                    <option value="log">日志备份</option>
+                                </select>
+                            </label>
+                            <label>保留:
+                                <input type="number" id="retentionDays" value="7"> 天
+                            </label>
+                            <label>
+                                <input type="checkbox" id="compress"> 7z 压缩
+                            </label>
+                            <label>网盘:
+                                <select id="cloudType">
+                                    <option value="">无</option>
+                                    <option value="aliyun">阿里云盘</option>
+                                    <option value="baidu">百度网盘</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                            <button class="btn btn-primary" onclick="backupSelected()" id="btnBackupSelected">▶ 备份选中</button>
+                            <button class="btn btn-success" onclick="backupAll()" id="btnBackupAll">▶ 备份全部</button>
+                            <button class="btn btn-danger" onclick="stopBackup()" id="btnStop" disabled>⏹ 停止</button>
+                        </div>
+                        <div class="status-bar" style="margin-top:12px;">
+                            <span class="status-dot idle" id="statusDot"></span>
+                            <span id="statusText">就绪</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="fill" id="progressFill"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：日志 -->
+            <div class="col-right">
+                <div class="card">
+                    <div class="card-header">
+                        <span>📝 执行日志</span>
+                        <button class="btn btn-sm btn-outline" onclick="clearLogs()" style="margin-left:auto;">🗑️ 清空</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="log-box" id="logBox">
+                            <div class="empty-state" style="padding:20px;">
+                                <div class="icon">📋</div>
+                                <div>等待执行备份...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加/编辑服务器弹窗 -->
+    <div class="modal-overlay" id="serverModal">
+        <div class="modal">
+            <h2 id="modalTitle">添加服务器</h2>
+            <div class="form-group">
+                <label>名称</label>
+                <input id="srvName" placeholder="例如：正式库">
+            </div>
+            <div class="form-group">
+                <label>服务器地址</label>
+                <input id="srvServer" placeholder="127.0.0.1">
+            </div>
+            <div class="form-group">
+                <label>端口</label>
+                <input id="srvPort" value="1433" type="number">
+            </div>
+            <div class="form-group">
+                <label>用户名</label>
+                <input id="srvUser" value="sa">
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input id="srvPassword" type="password">
+            </div>
+            <div class="form-group">
+                <label>数据库（逗号分隔，* 表示所有）</label>
+                <input id="srvDatabases" value="*">
+            </div>
+            <div class="form-group">
+                <label>输出目录</label>
+                <input id="srvOutput" value="D:\\SQLBackup">
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-outline" onclick="testConnection()">🔌 测试连接</button>
+                <button class="btn btn-outline" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveServer()">保存</button>
+            </div>
+            <div id="testResult" style="margin-top:10px;font-size:13px;white-space:pre-wrap;"></div>
+        </div>
+    </div>
+
+    <script>
+        let selectedIndex = -1;
+        let editingIndex = -1;
+        let pollTimer = null;
+
+        // 加载服务器列表
+        async function loadServers() {
+            const resp = await fetch('/api/servers');
+            const servers = await resp.json();
+            const list = document.getElementById('serverList');
+
+            if (servers.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">📭</div>
+                        <div>暂无服务器配置</div>
+                        <button class="btn btn-sm btn-primary" onclick="showAddServer()" style="margin-top:10px;">添加服务器</button>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = servers.map((srv, idx) => `
+                <div class="server-item ${idx === selectedIndex ? 'active' : ''}"
+                     onclick="selectServer(${idx})">
+                    <div>
+                        <div class="name">${srv.name || srv.server}</div>
+                        <div class="info">${srv.server}:${srv.port || 1433} · ${srv.databases?.join(',') || '*'}</div>
+                    </div>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <span class="badge">${srv.backup_type || 'full'}</span>
+                        <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();editServer(${idx})">✏️</button>
+                        <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteServer(${idx})">🗑️</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function selectServer(idx) {
+            selectedIndex = idx;
+            document.querySelectorAll('.server-item').forEach((el, i) => {
+                el.classList.toggle('active', i === idx);
+            });
+        }
+
+        // 添加服务器弹窗
+        function showAddServer() {
+            editingIndex = -1;
+            document.getElementById('modalTitle').textContent = '添加服务器';
+            ['srvName','srvServer','srvPort','srvUser','srvPassword','srvDatabases','srvOutput'].forEach(id => {
+                document.getElementById(id).value = '';
+            });
+            document.getElementById('srvPort').value = '1433';
+            document.getElementById('srvUser').value = 'sa';
+            document.getElementById('srvDatabases').value = '*';
+            document.getElementById('srvOutput').value = 'D:\\\\SQLBackup';
+            document.getElementById('testResult').textContent = '';
+            document.getElementById('serverModal').classList.add('show');
+        }
+
+        function editServer(idx) {
+            editingIndex = idx;
+            document.getElementById('modalTitle').textContent = '编辑服务器';
+            fetch('/api/servers').then(r => r.json()).then(servers => {
+                const srv = servers[idx];
+                document.getElementById('srvName').value = srv.name || '';
+                document.getElementById('srvServer').value = srv.server || '';
+                document.getElementById('srvPort').value = srv.port || 1433;
+                document.getElementById('srvUser').value = srv.username || 'sa';
+                document.getElementById('srvPassword').value = srv.password || '';
+                document.getElementById('srvDatabases').value = (srv.databases || ['*']).join(',');
+                document.getElementById('srvOutput').value = srv.output || 'D:\\\\SQLBackup';
+                document.getElementById('testResult').textContent = '';
+                document.getElementById('serverModal').classList.add('show');
+            });
+        }
+
+        function closeModal() {
+            document.getElementById('serverModal').classList.remove('show');
+        }
+
+        // 测试连接
+        async function testConnection() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '⏳ 测试中...';
+            document.getElementById('testResult').textContent = '';
+
+            const resp = await fetch('/api/test-connection', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    server: document.getElementById('srvServer').value,
+                    port: parseInt(document.getElementById('srvPort').value),
+                    username: document.getElementById('srvUser').value,
+                    password: document.getElementById('srvPassword').value
+                })
+            });
+            const data = await resp.json();
+            document.getElementById('testResult').textContent = data.msg;
+            document.getElementById('testResult').style.color = data.success ? '#34a853' : '#ea4335';
+            btn.disabled = false;
+            btn.textContent = '🔌 测试连接';
+        }
+
+        // 保存服务器
+        async function saveServer() {
+            const srv = {
+                name: document.getElementById('srvName').value,
+                server: document.getElementById('srvServer').value,
+                port: parseInt(document.getElementById('srvPort').value) || 1433,
+                username: document.getElementById('srvUser').value,
+                password: document.getElementById('srvPassword').value,
+                databases: document.getElementById('srvDatabases').value.split(',').map(s => s.trim()),
+                output: document.getElementById('srvOutput').value,
+                backup_type: 'full',
+                compress: false,
+                retention_days: 7,
+                cloud: null,
+                schedule: null
+            };
+
+            const resp = await fetch('/api/config');
+            const cfg = await resp.json();
+            if (!cfg.servers) cfg.servers = [];
+
+            if (editingIndex >= 0) {
+                cfg.servers[editingIndex] = srv;
+            } else {
+                cfg.servers.push(srv);
+            }
+
+            await fetch('/api/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(cfg)
+            });
+
+            closeModal();
+            loadServers();
+        }
+
+        // 删除服务器
+        async function deleteServer(idx) {
+            if (!confirm('确定删除该服务器配置吗？')) return;
+            const resp = await fetch('/api/config');
+            const cfg = await resp.json();
+            cfg.servers.splice(idx, 1);
+            await fetch('/api/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(cfg)
+            });
+            if (selectedIndex === idx) selectedIndex = -1;
+            loadServers();
+        }
+
+        // 备份
+        async function backupSelected() {
+            if (selectedIndex < 0) { alert('请先选择一个服务器'); return; }
+            await startBackup(selectedIndex);
+        }
+
+        async function backupAll() {
+            await startBackup(-1);
+        }
+
+        async function startBackup(serverIndex) {
+            document.getElementById('btnBackupSelected').disabled = true;
+            document.getElementById('btnBackupAll').disabled = true;
+            document.getElementById('btnStop').disabled = false;
+
+            const resp = await fetch('/api/backup', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    server_index: serverIndex,
+                    backup_type: document.getElementById('backupType').value,
+                    compress: document.getElementById('compress').checked,
+                    retention_days: parseInt(document.getElementById('retentionDays').value) || 7,
+                    cloud: document.getElementById('cloudType').value || null
+                })
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                alert(data.msg);
+                resetButtons();
+            }
+            startPolling();
+        }
+
+        async function stopBackup() {
+            await fetch('/api/stop', { method: 'POST' });
+        }
+
+        // 轮询状态
+        function startPolling() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(pollStatus, 1000);
+            pollStatus();
+        }
+
+        async function pollStatus() {
+            const resp = await fetch('/api/status');
+            const status = await resp.json();
+
+            // 更新状态
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            if (status.running) {
+                dot.className = 'status-dot running';
+                text.textContent = status.current ? `正在备份: ${status.current}` : '运行中...';
+            } else {
+                dot.className = 'status-dot idle';
+                text.textContent = '就绪';
+            }
+
+            // 更新进度
+            document.getElementById('progressFill').style.width = status.progress + '%';
+
+            // 更新日志
+            if (status.logs && status.logs.length > 0) {
+                const logBox = document.getElementById('logBox');
+                logBox.innerHTML = status.logs.map(log =>
+                    `<div><span class="time">[${log.time}]</span> <span class="${log.level}">${log.msg}</span></div>`
+                ).join('');
+                logBox.scrollTop = logBox.scrollHeight;
+            }
+
+            // 停止后重置按钮
+            if (!status.running) {
+                resetButtons();
+                if (pollTimer) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+            }
+        }
+
+        function resetButtons() {
+            document.getElementById('btnBackupSelected').disabled = false;
+            document.getElementById('btnBackupAll').disabled = false;
+            document.getElementById('btnStop').disabled = true;
+        }
+
+        function clearLogs() {
+            document.getElementById('logBox').innerHTML = `
+                <div class="empty-state" style="padding:20px;">
+                    <div class="icon">📋</div>
+                    <div>日志已清空</div>
+                </div>
+            `;
+        }
+
+        // 页面加载
+        loadServers();
+        startPolling();
+    </script>
+</body>
+</html>

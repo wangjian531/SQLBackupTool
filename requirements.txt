@@ -1,0 +1,5 @@
+pyodbc>=4.0.39
+pymssql>=2.2.7
+schedule>=1.2.0
+aliyundrive>=1.0.0
+requests>=2.31.0
