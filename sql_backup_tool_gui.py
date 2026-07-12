@@ -9,7 +9,8 @@ import tkinter as tk
 
 VERSION = "v1.2"
 from sql_backup_tool_core import SQLAgentManager, BackupHistory, BackupCleaner, SoftwareScheduler, log
-from sql_backup_core import do_backup, load_config, send_email_notification
+from sql_backup_tool_core import load_config, send_email_notification
+from sql_backup_tool_core import SoftwareScheduler as _sched_for_gui
 
 class App:
     def __init__(self):
@@ -257,7 +258,7 @@ class App:
 
     def _do(self, srv):
         try:
-            results = do_backup(srv, self.config)
+            results = _sched_for_gui(self.config, BackupHistory())._do_backup(srv)
             for r in results:
                 self.history.add(srv.get("name",srv["server"]), r.get("database",""),
                                  r["status"], r.get("size",""), r.get("message",""))

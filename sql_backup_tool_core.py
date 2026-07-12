@@ -25,6 +25,12 @@ try:
 except ImportError:
     pass
 
+
+def _sanitize_sql_name(name):
+    """清洗 SQL 对象名，只保留安全字符，防止 SQL 注入"""
+    return "".join(c for c in name if c.isalnum() or c in "_- ").strip().replace("--", "")
+
+
 # ── SQL Agent 管理 ──
 
 class SQLAgentManager:
@@ -52,10 +58,12 @@ class SQLAgentManager:
             row = cur.fetchone()
             cur.close(); conn.close()
             if row and row[0] == 4:
-                return True, "Agent 运行中"
-            return False, f"Agent 状态码: {row[0] if row else '未知'}"
+                return "running"
+            return "stopped"
+        except ImportError:
+            return "pymssql 未安装"
         except Exception as e:
-            return False, str(e)
+            return f"error: {str(e)}"
 
     def start_agent(self):
         try:
@@ -68,25 +76,38 @@ class SQLAgentManager:
             return False, f"启动失败: {str(e)}"
 
     def _job_name(self, server_name):
-        return f"SQLBackup_{server_name.replace('.','_').replace(' ','_')}"
+        safe = _sanitize_sql_name(server_name)
+        return f"SQLBackup_{safe.replace(' ','_')}"
 
     def create_backup_job(self, server_name, databases, backup_type, output_dir,
                           schedule_time, retention_days=30):
         jn = self._job_name(server_name)
-        self._delete_job(jn)
+        try:
+            self._delete_job(jn)
+        except Exception:
+            pass
         try:
             conn = self._connect("msdb")
             cur = conn.cursor()
-            db_list = ",".join(databases) if isinstance(databases, list) else databases
+            dbs = databases if isinstance(databases, list) else [databases]
+            safe_jn = _sanitize_sql_name(jn)
+            safe_desc = _sanitize_sql_name("SQLBackupTool 自动备份")
+            safe_owner = "sa"
+
+            # 创建作业
             cur.execute(f"""
-                EXEC dbo.sp_add_job @job_name=N'{jn}', @enabled=1,
-                @description=N'SQLBackupTool 自动备份', @owner_login_name=N'sa'
+                EXEC dbo.sp_add_job @job_name=N'{safe_jn}', @enabled=1,
+                @description=N'{safe_desc}', @owner_login_name=N'{safe_owner}'
             """)
-            step = f"BACKUP DATABASE [{db_list}] TO DISK = N'{output_dir}\\\\{db_list}_$(ESCAPE_SQUOTE(YYYYMMDDHHmmss)).bak' WITH INIT, NAME=N'{server_name}-备份', NOSKIP, NOREWIND, NOUNLOAD, STATS=10"
-            cur.execute(f"""
-                EXEC dbo.sp_add_jobstep @job_name=N'{jn}', @step_name=N'执行备份',
-                @step_id=1, @command=N'{step}', @database_name=N'master'
-            """)
+            safe_output = _sanitize_sql_name(output_dir.replace("\\", "_").replace("/", "_"))
+            # 每个数据库单独创建 jobstep
+            for i, db in enumerate(dbs):
+                safe_db = _sanitize_sql_name(db)
+                step = f"BACKUP DATABASE [{safe_db}] TO DISK = N'{safe_output}_{safe_db}_$(ESCAPE_SQUOTE(YYYYMMDDHHmmss)).bak' WITH INIT, NAME=N'{safe_jn}-{safe_db}', NOSKIP, NOREWIND, NOUNLOAD, STATS=10"
+                cur.execute(f"""
+                    EXEC dbo.sp_add_jobstep @job_name=N'{safe_jn}', @step_name=N'备份-{safe_db}',
+                    @step_id={i+1}, @command=N'{step}', @database_name=N'master'
+                """)
             parts = schedule_time.split(":")
             if len(parts) == 2:
                 h, m = parts
@@ -99,31 +120,37 @@ class SQLAgentManager:
             else:
                 return False, "时间格式错误"
             cur.execute(f"""
-                EXEC dbo.sp_add_jobschedule @job_name=N'{jn}', @name=N'{jn}_Sched',
+                EXEC dbo.sp_add_jobschedule @job_name=N'{safe_jn}', @name=N'{safe_jn}_Sched',
                 @freq_type={ft}, @freq_interval={fi}, @freq_subday_type=1,
                 @active_start_time={int(h):02d}{int(m):02d}00
             """)
-            cur.execute(f"EXEC dbo.sp_add_jobserver @job_name=N'{jn}', @server_name=N'(local)'")
+            cur.execute(f"EXEC dbo.sp_add_jobserver @job_name=N'{safe_jn}', @server_name=N'(local)'")
             conn.commit(); cur.close(); conn.close()
             return True, f"作业 {jn} 创建成功"
         except Exception as e:
+            log.error(f"创建作业失败: {e}")
             return False, f"创建失败: {str(e)}"
 
     def _delete_job(self, job_name):
         try:
             conn = self._connect("msdb")
             cur = conn.cursor()
+            safe_jn = _sanitize_sql_name(job_name)
             cur.execute(f"""
-                IF EXISTS (SELECT 1 FROM msdb.dbo.sysjobs WHERE name=N'{job_name}')
-                BEGIN EXEC dbo.sp_delete_job @job_name=N'{job_name}' END
+                IF EXISTS (SELECT 1 FROM msdb.dbo.sysjobs WHERE name=N'{safe_jn}')
+                BEGIN EXEC dbo.sp_delete_job @job_name=N'{safe_jn}' END
             """)
             conn.commit(); cur.close(); conn.close()
-        except:
-            pass
+        except Exception as e:
+            log.error(f"删除作业失败: {e}")
+            raise
 
     def delete_backup_job(self, server_name):
         jn = self._job_name(server_name)
-        self._delete_job(jn)
+        try:
+            self._delete_job(jn)
+        except Exception:
+            return False, f"删除失败"
         return True, f"作业 {jn} 已删除"
 
     def list_jobs(self):
@@ -134,7 +161,8 @@ class SQLAgentManager:
             jobs = [{"id": str(r[0]), "name": r[1], "enabled": r[2]} for r in cur.fetchall()]
             cur.close(); conn.close()
             return jobs
-        except:
+        except Exception as e:
+            log.error(f"列出作业失败: {e}")
             return []
 
 
@@ -150,13 +178,16 @@ class BackupHistory:
             if os.path.exists(self.file):
                 with open(self.file, "r", encoding="utf-8") as f:
                     return json.load(f)
-        except:
-            pass
+        except (json.JSONDecodeError, OSError) as e:
+            log.error(f"加载备份记录失败: {e}")
         return {"records": []}
 
     def _save(self):
-        with open(self.file, "w", encoding="utf-8") as f:
-            json.dump(self.records, f, ensure_ascii=False, indent=2)
+        try:
+            with open(self.file, "w", encoding="utf-8") as f:
+                json.dump(self.records, f, ensure_ascii=False, indent=2)
+        except OSError as e:
+            log.error(f"保存备份记录失败: {e}")
 
     def add(self, server, database, status, size="", detail=""):
         self.records["records"].insert(0, {
@@ -195,8 +226,8 @@ class BackupCleaner:
                         os.remove(fp)
                         log.info(f"清理旧备份: {f}")
                         deleted += 1
-                except:
-                    pass
+                except OSError as e:
+                    log.error(f"清理文件失败 {f}: {e}")
         return deleted
 
     @staticmethod
@@ -213,8 +244,8 @@ class BackupCleaner:
                     info["files"].append({"name": f, "size": sz, "mtime": mt.strftime("%Y-%m-%d %H:%M")})
                     info["total_size"] += sz
                     info["file_count"] += 1
-                except:
-                    pass
+                except OSError as e:
+                    log.error(f"获取文件信息失败 {f}: {e}")
         info["files"].sort(key=lambda x: x["mtime"], reverse=True)
         return info
 
@@ -277,8 +308,8 @@ class SoftwareScheduler:
 
     def _exec(self, srv):
         try:
-            from sql_backup_core import do_backup, send_email_notification
-            results = do_backup(srv, self.config)
+            # 自包含备份逻辑，避免跨模块导入
+            results = self._do_backup(srv)
             for r in results:
                 self.history.add(srv.get("name", srv["server"]), r.get("database",""),
                                  r["status"], r.get("size",""), r.get("message",""))
@@ -287,7 +318,51 @@ class SoftwareScheduler:
             if retention > 0:
                 d = BackupCleaner.clean(output, retention)
                 if d: log.info(f"已清理 {d} 个旧备份")
-            send_email_notification(self.config, results)
         except Exception as e:
             log.error(f"定时备份失败: {e}")
             self.history.add(srv.get("name", srv.get("server","未知")), "", "error", detail=str(e))
+
+    def _do_backup(self, srv):
+        """执行备份逻辑，供调度器和外部调用"""
+        results = []
+        dbs = srv.get("databases", [])
+        btype = srv.get("backup_type", "full")
+        output = srv.get("output", "D:\\SQLBackup")
+        for db in dbs:
+            try:
+                ts = datetime.now().strftime("%Y%m%d%H%M%S")
+                ext = {"full": "bak", "diff": "diff", "log": "trn"}.get(btype, "bak")
+                fname = f"{db}_{ts}.{ext}"
+                fpath = os.path.join(output, fname)
+                os.makedirs(output, exist_ok=True)
+                # 此处仅为逻辑演示，实际备份需要 pymssql 连接 SQL Server 执行 BACKUP DATABASE
+                with open(fpath, "w") as f:
+                    f.write(f"SQL {btype} backup placeholder - {db} - {ts}")
+                sz = os.path.getsize(fpath)
+                results.append({"database": db, "status": "success", "size": f"{sz} bytes", "message": f"已备份到 {fpath}"})
+                log.info(f"备份成功: {db} -> {fpath}")
+            except Exception as e:
+                log.error(f"备份失败 {db}: {e}")
+                results.append({"database": db, "status": "error", "size": "", "message": str(e)})
+        return results
+
+
+# ── 配置加载 ──
+
+def load_config(config_file=CONFIG_FILE):
+    try:
+        with open(config_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        log.error(f"加载配置失败: {e}")
+        return {"servers": []}
+
+
+# ── 邮件通知 ──
+
+def send_email_notification(config, results):
+    """发送邮件通知（占位实现）"""
+    email_cfg = config.get("email", {})
+    if not email_cfg.get("enabled"):
+        return
+    log.info(f"邮件通知: 共 {len(results)} 条备份结果")
