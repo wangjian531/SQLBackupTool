@@ -509,8 +509,14 @@ class App:
             try:
                 import smbclient
                 # 测试连接 - 列出共享目录
-                share_list = smbclient.list_shares(host, username=user, password=password)
-                shares = [s.name for s in share_list]
+                # 兼容新旧版 API：新版用 list_share，旧版用 list_shares
+                if hasattr(smbclient, 'list_share'):
+                    shares = list(smbclient.list_share(host, username=user, password=password))
+                elif hasattr(smbclient, 'list_shares'):
+                    raw = smbclient.list_shares(host, username=user, password=password)
+                    shares = [s.name if hasattr(s, 'name') else str(s) for s in raw]
+                else:
+                    raise AttributeError("smbclient 没有 list_share/list_shares 方法")
                 # 尝试连接指定路径
                 if path:
                     smbclient.list(path, username=user, password=password)
