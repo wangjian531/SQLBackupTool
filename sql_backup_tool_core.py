@@ -347,12 +347,64 @@ class SoftwareScheduler:
         return results
 
 
+# ── 密码加密/解密 ──
+
+import base64
+
+def _encrypt_pw(raw):
+    """简单编码存储，避免明文直接可见"""
+    if not raw:
+        return ""
+    return base64.b64encode(raw.encode()).decode()
+
+def _decrypt_pw(encoded):
+    """解码密码"""
+    if not encoded:
+        return ""
+    try:
+        return base64.b64decode(encoded.encode()).decode()
+    except Exception:
+        return encoded  # 兼容旧明文
+
 # ── 配置加载 ──
 
+def _encrypt_config_passwords(cfg):
+    """加密配置中所有明文密码"""
+    for srv in cfg.get("servers", []):
+        if srv.get("password"):
+            srv["password"] = _encrypt_pw(srv["password"])
+    email = cfg.get("email", {})
+    if email.get("password"):
+        email["password"] = _encrypt_pw(email["password"])
+    return cfg
+
+def _decrypt_config_passwords(cfg):
+    """解密配置中所有密码"""
+    for srv in cfg.get("servers", []):
+        if srv.get("password"):
+            srv["password"] = _decrypt_pw(srv["password"])
+    email = cfg.get("email", {})
+    if email.get("password"):
+        email["password"] = _decrypt_pw(email["password"])
+    return cfg
+
+def save_config(cfg, config_file=CONFIG_FILE):
+    """保存配置（自动加密密码）"""
+    cfg = _encrypt_config_passwords(cfg)
+    try:
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        return True
+    except OSError as e:
+        log.error(f"保存配置失败: {e}")
+        return False
+
 def load_config(config_file=CONFIG_FILE):
+    """加载配置（自动解密密码）"""
     try:
         with open(config_file, "r", encoding="utf-8") as f:
-            return json.load(f)
+            cfg = json.load(f)
+        return _decrypt_config_passwords(cfg)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         log.error(f"加载配置失败: {e}")
         return {"servers": []}
