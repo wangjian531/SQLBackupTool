@@ -35,7 +35,6 @@ jobs:
             --hidden-import pymssql `
             --hidden-import pyodbc `
             --hidden-import schedule `
-            --hidden-import sql_backup_core `
             --hidden-import sql_backup_tool_core `
             --hidden-import sql_backup_tool_gui `
             ${{ matrix.file }}
