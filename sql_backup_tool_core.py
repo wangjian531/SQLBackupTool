@@ -58,12 +58,12 @@ class SQLAgentManager:
             row = cur.fetchone()
             cur.close(); conn.close()
             if row and row[0] == 4:
-                return "running"
-            return "stopped"
+                return True, "Agent 运行中"
+            return False, "Agent 未运行"
         except ImportError:
-            return "pymssql 未安装"
+            return False, "pymssql 未安装"
         except Exception as e:
-            return f"error: {str(e)}"
+            return False, f"检查失败: {str(e)}"
 
     def start_agent(self):
         try:
