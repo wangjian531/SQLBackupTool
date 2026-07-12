@@ -27,7 +27,19 @@ class App:
         self._build_tabs()
         self._build_statusbar()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.root.bind("<Unmap>", self._on_minimize)
+        self.root.bind("<Map>", self._on_restore)
         self.root.after(1000, self._startup_cleanup)
+
+    def _on_minimize(self, event=None):
+        """最小化到任务栏时不隐藏，保持可点击恢复"""
+        pass
+
+    def _on_restore(self, event=None):
+        """从任务栏恢复时正常显示"""
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
 
     def run(self): self.root.mainloop()
 
